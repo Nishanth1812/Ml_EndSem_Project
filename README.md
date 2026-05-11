@@ -1,51 +1,58 @@
 # Alpha Intelligence Engine
 
 ## Overview
-The Alpha Intelligence Engine is a quantitative framework designed for systematic equity analysis. It implements a Heterogeneous Stacking Ensemble on financial time-series data to isolate and predict alpha, the idiosyncratic return component of asset performance.
+The project now uses a clearer supervised-learning layout:
 
-## Project Structure
+- Linear Regression is the baseline model.
+- Random Forest and XGBoost are the primary inference models.
+- Each model is trained independently and used directly for prediction.
+- Alpha is derived as the model return forecast adjusted by estimated beta and market expectation.
+
+## Structure
 ```
-alpha-intelligence-engine
+Ml_EndSem_Project
+├── main.py
+├── pyproject.toml
+├── requirements.txt
 ├── src
-│   └── myapp.py                # Main application logic for the Alpha Intelligence Engine
+│   ├── myapp.py
+│   ├── run_app.py
+│   └── alpha_engine
+│       ├── __init__.py
+│       ├── engine.py
+│       └── ui.py
 ├── data
-│   └── NIFTY 500_day.csv       # Historical price data for the Nifty 500 index
-├── requirements.txt             # Python dependencies required to run the application
-├── setup.sh                     # Shell script to set up the environment
-├── .streamlit
-│   └── config.toml             # Streamlit configuration file
-└── README.md                    # Documentation for the project
+│   └── NIFTY 500_day.csv
+└── setup.sh
 ```
 
-## Installation
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd alpha-intelligence-engine
-   ```
+## What changed
+- The old stacked ensemble was removed.
+- Preprocessing, training, inference, and UI code are now separated.
+- Chronological train/test splitting is used to avoid leakage.
+- Random Forest and XGBoost are tuned independently and can be selected at inference time.
 
-2. Run the setup script to create a virtual environment and install dependencies:
-   ```
-   bash setup.sh
-   ```
+## Run the app
+Use any of the following:
 
-3. Ensure that the required packages are installed by checking `requirements.txt`.
+```bash
+streamlit run src/myapp.py
+```
 
-## Usage
-1. Start the Streamlit application:
-   ```
-   streamlit run src/myapp.py
-   ```
+```bash
+python main.py
+```
 
-2. Open your web browser and navigate to `http://localhost:8501` to interact with the Alpha Intelligence Engine.
+```bash
+python src/run_app.py
+```
 
-## Features
-- **Data Ingestion & Preprocessing**: Loads historical price data and generates features for analysis.
-- **Heterogeneous Stacking Ensemble**: Combines multiple machine learning models to improve predictive performance
-- **Predictive Analytics**: Provides insights into alpha generation and performance validation against market benchmarks.
+## Model flow
+1. Load the CSV price history.
+2. Standardize column names and engineer lag, momentum, RSI, volatility, and price-distance features.
+3. Train the baseline linear model on scaled features.
+4. Tune and train Random Forest and XGBoost separately.
+5. Use one model at a time for stock scoring and ranking.
 
-## Contributing
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+## Dependencies
+Install the packages listed in `requirements.txt` or via the `pyproject.toml` metadata.

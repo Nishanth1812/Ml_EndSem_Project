@@ -1,0 +1,19 @@
+[project]
+name = "ml-endsem-project"
+version = "0.1.0"
+description = "Stock alpha modeling dashboard with independent baseline and tree-based inference models"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+	"streamlit",
+	"pandas",
+	"numpy",
+	"plotly",
+	"scikit-learn",
+	"xgboost",
+	"yfinance",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
