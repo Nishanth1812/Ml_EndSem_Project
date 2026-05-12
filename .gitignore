@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+.ipynb_checkpoints/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/.vercel/
+frontend/out/
+frontend/*.tsbuildinfo
+frontend/.env.local
+frontend/.env.*.local
+
+# Generated ML artifacts
+models/
+feature_importance.json
+feature_importance.png
+metrics.json
+model_performance_comparison.png
+training_summary.json
+training.ipynb

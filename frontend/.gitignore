@@ -1,0 +1,17 @@
+# Dependencies and build output
+node_modules/
+.next/
+.turbo/
+.vercel/
+out/
+dist/
+coverage/
+
+# Local env and TypeScript cache
+.env.local
+.env.*.local
+*.tsbuildinfo
+
+# Tooling noise
+.eslintcache
+*.log

@@ -12,6 +12,8 @@ dependencies = [
 	"scikit-learn",
 	"xgboost",
 	"yfinance",
+	"fastapi",
+	"uvicorn[standard]",
 ]
 
 [build-system]

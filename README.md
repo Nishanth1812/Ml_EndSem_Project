@@ -14,6 +14,26 @@ Ml_EndSem_Project
 ├── main.py
 ├── pyproject.toml
 ├── requirements.txt
+├── api
+│   ├── main.py
+│   ├── run.py
+│   ├── schemas.py
+│   └── service.py
+├── frontend
+│   ├── app
+│   │   ├── page.tsx
+│   │   ├── layout.tsx
+│   │   ├── metrics
+│   │   │   └── page.tsx
+│   │   ├── inference
+│   │   │   └── page.tsx
+│   │   └── screener
+│   │       └── page.tsx
+│   ├── components
+│   │   └── sidebar-nav.tsx
+│   └── lib
+│       ├── api.ts
+│       └── types.ts
 ├── src
 │   ├── myapp.py
 │   ├── run_app.py
@@ -31,6 +51,8 @@ Ml_EndSem_Project
 - Preprocessing, training, inference, and UI code are now separated.
 - Chronological train/test splitting is used to avoid leakage.
 - Random Forest and XGBoost are tuned independently and can be selected at inference time.
+- The Next.js UI is now dark, simple, and page-wise.
+- The frontend is limited to metrics display, inference, and watchlist ranking.
 
 ## Run the app
 Use any of the following:
@@ -46,6 +68,15 @@ python main.py
 ```bash
 python src/run_app.py
 ```
+
+## New Web Stack
+
+- `api/` contains the FastAPI backend.
+- `frontend/` contains the Next.js dashboard.
+- Set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` if the backend is not on `http://localhost:8000`.
+- Start the backend with `python -m api.run`.
+- Start the frontend with `npm run dev` inside `frontend/`.
+- Pages available in the frontend: `Overview`, `Metrics`, `Inference`, and `Screener`.
 
 ## Model flow
 1. Load the CSV price history.

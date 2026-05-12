@@ -87,10 +87,13 @@ def run_app() -> None:
         st.markdown(
             """
             <div class="panel">
-            <h3>Model design</h3>
-            <p>The project is now organized around a single supervised return forecast target.</p>
-            <p>Linear Regression is the transparent baseline. Random Forest and XGBoost are trained independently and used directly for inference.</p>
-            <div class="formula">predicted_alpha = predicted_return - beta x market_expected_return</div>
+            <h3>Heterogeneous Stacking Ensemble for Alpha Prediction</h3>
+            <p>The Alpha Intelligence Engine employs a two-layer ensemble architecture:</p>
+            <div class="formula">R_i = β × R_m + α</div>
+            <p><strong>Layer 0 (Base Learners):</strong> Random Forest (Bagging), XGBoost (Boosting), and Linear Regression baseline are trained independently on engineered features.</p>
+            <p><strong>Layer 1 (Meta-Learner):</strong> A Linear Regression meta-learner combines base learner predictions, dynamically reweighting them based on their current performance in the specific market regime.</p>
+            <p><strong>Alpha Extraction:</strong> predicted_alpha = predicted_return - (beta × market_expected_return)</p>
+            <p>This heterogeneous approach isolates idiosyncratic signals decoupled from general market volatility, improving prediction accuracy.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -102,7 +105,8 @@ def run_app() -> None:
             st.write("1. Load and normalize the price history")
             st.write("2. Create lag, momentum, RSI, volatility, and price-distance features")
             st.write("3. Fit Linear Regression, Random Forest, and XGBoost chronologically")
-            st.write("4. Use the selected model for inference and alpha ranking")
+            st.write("4. Train meta-learner on base model predictions (Stacking)")
+            st.write("5. Use ensemble for inference and alpha ranking")
         with right:
             concept = go.Figure()
             x_axis = np.linspace(0, 1, 60)
@@ -140,7 +144,7 @@ def run_app() -> None:
             with st.spinner("Running chronological training and model tuning..."):
                 try:
                     engine.train()
-                    st.success("Models trained successfully.")
+                    st.success("Models and ensemble meta-learner trained successfully.")
                 except Exception as exc:
                     st.error(str(exc))
 
@@ -148,18 +152,54 @@ def run_app() -> None:
             metrics_df = engine.metrics_dataframe()
             st.dataframe(metrics_df, use_container_width=True)
 
-            metric_cols = st.columns(3)
-            for column, model_name in zip(metric_cols, ["baseline", "random_forest", "xgboost"]):
+            metric_cols = st.columns(4)
+            for column, model_name in zip(metric_cols, ["baseline", "random_forest", "xgboost", "ensemble"]):
                 metrics = engine.metrics_[model_name]
                 with column:
-                    _render_metric_card(MODEL_LABELS[model_name], f"MAE {metrics.mae:.6f}", delta=f"R2 {metrics.r2:.4f}")
+                    label = MODEL_LABELS.get(model_name, "Ensemble Meta-Learner")
+                    _render_metric_card(label, f"MAE {metrics.mae:.6f}", delta=f"R2 {metrics.r2:.4f}")
+
+            # Ensemble Attribution Analysis
+            if engine.meta_learner is not None:
+                st.subheader("Ensemble Attribution Analysis")
+                weights = np.abs(engine.meta_learner.coef_)
+                normalized_weights = weights / np.sum(weights) * 100
+                attribution_df = pd.DataFrame({
+                    'Model': ['Random Forest (Bagging)', 'XGBoost (Boosting)'],
+                    'Attribution %': normalized_weights
+                })
+                
+                attr_chart = go.Figure(
+                    go.Bar(
+                        x=attribution_df['Model'],
+                        y=attribution_df['Attribution %'],
+                        marker_color=['#3b82f6', '#f59e0b']
+                    )
+                )
+                attr_chart.update_layout(
+                    title="Meta-Learner Attribution Weights",
+                    template="plotly_white",
+                    height=320,
+                    margin=dict(l=0, r=0, t=40, b=0)
+                )
+                st.plotly_chart(attr_chart, use_container_width=True)
+                
+                st.markdown("""
+                **Attribution Explanation:** The meta-learner dynamically reweights base learner predictions. 
+                High attribution to XGBoost indicates non-linear structural shifts, while high attribution 
+                to Random Forest suggests stable ensemble confidence across multiple feature interactions.
+                """)
 
             holdout = engine.holdout_frame
             if holdout is not None:
+                available_models = ["baseline", "random_forest", "xgboost"]
+                if engine.meta_learner is not None:
+                    available_models.append("ensemble")
+                
                 selected_model = st.selectbox(
                     "Holdout view",
-                    ["baseline", "random_forest", "xgboost"],
-                    format_func=lambda name: MODEL_LABELS[name],
+                    available_models,
+                    format_func=lambda name: MODEL_LABELS.get(name, "Ensemble Meta-Learner"),
                     key="holdout_model",
                 )
                 chart = go.Figure()
@@ -168,19 +208,22 @@ def run_app() -> None:
                     go.Scatter(
                         x=holdout.index,
                         y=holdout[f"pred_{selected_model}"],
-                        name=MODEL_LABELS[selected_model],
+                        name=MODEL_LABELS.get(selected_model, "Ensemble Meta-Learner"),
                         line=dict(color="#2563eb", width=2),
                     )
                 )
                 chart.update_layout(template="plotly_white", height=360, margin=dict(l=0, r=0, t=20, b=0))
                 st.plotly_chart(chart, use_container_width=True)
 
-                importance = engine.feature_importance(selected_model)
-                importance_chart = go.Figure(
-                    go.Bar(x=importance.head(10).index.tolist(), y=importance.head(10).values.tolist(), marker_color="#0f172a")
-                )
-                importance_chart.update_layout(template="plotly_white", height=320, margin=dict(l=0, r=0, t=20, b=0))
-                st.plotly_chart(importance_chart, use_container_width=True)
+                if selected_model == "ensemble" and engine.meta_learner is not None:
+                    st.info("Ensemble model combines Random Forest and XGBoost predictions through the meta-learner.")
+                else:
+                    importance = engine.feature_importance(selected_model)
+                    importance_chart = go.Figure(
+                        go.Bar(x=importance.head(10).index.tolist(), y=importance.head(10).values.tolist(), marker_color="#0f172a")
+                    )
+                    importance_chart.update_layout(template="plotly_white", height=320, margin=dict(l=0, r=0, t=20, b=0))
+                    st.plotly_chart(importance_chart, use_container_width=True)
         else:
             st.info("Train the models to see holdout metrics and feature importance.")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -194,17 +237,19 @@ def run_app() -> None:
             left, right = st.columns([2, 1])
             with left:
                 ticker = st.selectbox("Select a stock", DEFAULT_WATCHLIST, format_func=lambda item: item.replace(".NS", ""))
+                available_models = ["ensemble", "xgboost", "random_forest", "baseline"] if engine.meta_learner is not None else ["xgboost", "random_forest", "baseline"]
                 model_name = st.selectbox(
                     "Inference model",
-                    ["baseline", "random_forest", "xgboost"],
-                    index=2,
-                    format_func=lambda name: MODEL_LABELS[name],
+                    available_models,
+                    index=0,
+                    format_func=lambda name: MODEL_LABELS.get(name, "Ensemble Meta-Learner"),
                 )
             with right:
                 run_button = st.button("Run inference", type="primary")
 
             if run_button:
-                with st.spinner(f"Scoring {ticker} with {MODEL_LABELS[model_name]}..."):
+                model_label = MODEL_LABELS.get(model_name, "Ensemble Meta-Learner")
+                with st.spinner(f"Scoring {ticker} with {model_label}..."):
                     try:
                         analysis = engine.analyze_ticker(ticker, model_name=model_name)
                         metrics = st.columns(4)
@@ -217,12 +262,14 @@ def run_app() -> None:
                         with metrics[3]:
                             _render_metric_card("Beta", f"{analysis.beta:.3f}")
 
-                        tech = st.columns(3)
+                        tech = st.columns(4)
                         with tech[0]:
                             _render_metric_card("RSI", f"{analysis.rsi:.1f}")
                         with tech[1]:
                             _render_metric_card("Volatility", f"{analysis.volatility:.5f}")
                         with tech[2]:
+                            _render_metric_card("Price/SMA(50)", f"{analysis.price_to_sma:.3f}")
+                        with tech[3]:
                             _render_metric_card("Market return", f"{analysis.market_expected_return:.5f}")
 
                         price_chart = go.Figure()
@@ -252,11 +299,12 @@ def run_app() -> None:
         if not engine.is_trained:
             st.info("Train the models first to rank the watchlist.")
         else:
+            available_models = ["ensemble", "xgboost", "random_forest"] if engine.meta_learner is not None else ["xgboost", "random_forest"]
             model_name = st.selectbox(
                 "Ranking model",
-                ["random_forest", "xgboost"],
-                index=1,
-                format_func=lambda name: MODEL_LABELS[name],
+                available_models,
+                index=0,
+                format_func=lambda name: MODEL_LABELS.get(name, "Ensemble Meta-Learner"),
                 key="ranking_model",
             )
             top_n = st.slider("Top N stocks", min_value=3, max_value=len(DEFAULT_WATCHLIST), value=5)
@@ -274,6 +322,7 @@ def run_app() -> None:
                                     "beta": item.beta,
                                     "volatility": item.volatility,
                                     "rsi": item.rsi,
+                                    "price_to_sma": item.price_to_sma,
                                 }
                                 for item in ranked
                             ]
@@ -287,7 +336,12 @@ def run_app() -> None:
                                 marker_color="#0f172a",
                             )
                         )
-                        chart.update_layout(template="plotly_white", height=320, margin=dict(l=0, r=0, t=20, b=0))
+                        chart.update_layout(
+                            title="Predicted Alpha by Stock (Top N)",
+                            template="plotly_white",
+                            height=320,
+                            margin=dict(l=0, r=0, t=40, b=0)
+                        )
                         st.plotly_chart(chart, use_container_width=True)
                     else:
                         st.warning("No tickers could be scored. Check your internet connection and try again.")

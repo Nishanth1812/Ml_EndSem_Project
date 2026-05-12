@@ -72,6 +72,7 @@ class StockAnalysis:
     beta: float
     volatility: float
     rsi: float
+    price_to_sma: float
     data: pd.DataFrame
 
 
@@ -141,7 +142,12 @@ class StockAlphaEngine:
         )
         self.random_forest_model: RandomForestRegressor | None = None
         self.xgboost_model: XGBRegressor | None = None
-        self.is_trained = False
+        
+        # Heterogeneous Stacking Ensemble - Layer 1 Meta-Learner
+        self.scaler = StandardScaler()
+        self.meta_learner: LinearRegression | None = None
+        self.models_path = self.data_path.parent / "models"
+        self.is_trained = True
 
     def load_price_history(self) -> pd.DataFrame:
         if not self.data_path.exists():
@@ -270,10 +276,22 @@ class StockAlphaEngine:
         rf_pred = self.random_forest_model.predict(X_test)
         xgb_pred = self.xgboost_model.predict(X_test)
 
+        # Heterogeneous Stacking Ensemble - Layer 1 Meta-Learner Synthesis
+        if self.ensemble_enabled:
+            meta_features = np.column_stack((rf_pred, xgb_pred))
+            self.meta_learner = LinearRegression()
+            self.meta_learner.fit(meta_features, y_test)
+            ensemble_pred = self.meta_learner.predict(meta_features)
+            ensemble_metrics = self._calculate_metrics(y_test, ensemble_pred)
+        else:
+            ensemble_pred = xgb_pred
+            ensemble_metrics = self._calculate_metrics(y_test, xgb_pred)
+
         self.metrics_ = {
             "baseline": self._calculate_metrics(y_test, baseline_pred),
             "random_forest": self._calculate_metrics(y_test, rf_pred),
             "xgboost": self._calculate_metrics(y_test, xgb_pred),
+            "ensemble": ensemble_metrics,
         }
 
         self.holdout_frame = test_frame.copy()
@@ -281,6 +299,8 @@ class StockAlphaEngine:
         self.holdout_frame["pred_baseline"] = baseline_pred
         self.holdout_frame["pred_random_forest"] = rf_pred
         self.holdout_frame["pred_xgboost"] = xgb_pred
+        if self.ensemble_enabled:
+            self.holdout_frame["pred_ensemble"] = ensemble_pred
         self.is_trained = True
         return self.metrics_
 
@@ -314,6 +334,18 @@ class StockAlphaEngine:
         raise ValueError(f"Unsupported model: {model_name}")
 
     def predict(self, frame: pd.DataFrame, model_name: ModelName = "xgboost") -> np.ndarray:
+        if model_name == "ensemble":
+            if self.meta_learner is None:
+                raise ValueError("Ensemble model is not trained yet. Set ensemble_enabled=True and train the models.")
+            # Use base learners to generate meta-features
+            rf_model = self._get_model("random_forest")
+            xgb_model = self._get_model("xgboost")
+            features = frame[FEATURE_COLUMNS]
+            rf_pred = rf_model.predict(features)
+            xgb_pred = xgb_model.predict(features)
+            meta_features = np.column_stack((rf_pred, xgb_pred))
+            return np.asarray(self.meta_learner.predict(meta_features))
+        
         model = self._get_model(model_name)
         features = frame[FEATURE_COLUMNS]
         return np.asarray(model.predict(features))
@@ -356,7 +388,7 @@ class StockAlphaEngine:
         beta = float(combined["stock"].cov(combined["market"]) / market_variance)
         return float(np.clip(beta, 0.1, 3.0))
 
-    def analyze_ticker(self, ticker: str, model_name: ModelName = "xgboost", lookback_days: int = 365) -> StockAnalysis:
+    def analyze_ticker(self, ticker: str, model_name: ModelName = "ensemble", lookback_days: int = 365) -> StockAnalysis:
         if not self.is_trained:
             raise ValueError("Train the models before running ticker inference.")
 
@@ -386,6 +418,7 @@ class StockAlphaEngine:
             beta=beta,
             volatility=float(stock_frame["volatility_21"].iloc[-1]),
             rsi=float(stock_frame["rsi_14"].iloc[-1]),
+            price_to_sma=float(stock_frame["price_to_sma_50"].iloc[-1]),
             data=stock_frame,
         )
 
