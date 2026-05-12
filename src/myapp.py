@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
@@ -11,616 +13,928 @@ from sklearn.metrics import r2_score, mean_absolute_error
 import yfinance as yf
 from datetime import datetime, timedelta
 import warnings
+import io
 warnings.filterwarnings('ignore')
 
-# ==========================================
-# SYSTEM CONFIGURATION & AESTHETICS
-# ==========================================
-st.set_page_config(page_title="Alpha Intelligence Engine", layout="wide")
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = True
 
-st.markdown("""
+st.set_page_config(page_title="Alpha Intelligence Engine", layout="wide", page_icon="")
+
+if st.session_state.dark_mode:
+    BG = "#0f1117"
+    CARD = "#1a1d2e"
+    BORDER = "#2a2d3e"
+    TEXT = "#e2e8f0"
+    TEXT_MUTED = "#8892a4"
+    HEADER_BG = "linear-gradient(135deg, #0f1117 0%, #1a1d2e 100%)"
+    HEADER_BORDER = "#2a2d3e"
+    PLOTLY_TEMPLATE = "plotly_dark"
+    METRIC_BG = "#1a1d2e"
+    TAB_BG = "#1a1d2e"
+    TAB_ACTIVE = "#3b82f6"
+    ACCENT = "#3b82f6"
+    SUCCESS = "#22c55e"
+    DANGER = "#ef4444"
+    WARNING_COLOR = "#f59e0b"
+else:
+    BG = "#f8fafc"
+    CARD = "#ffffff"
+    BORDER = "#e2e8f0"
+    TEXT = "#0f172a"
+    TEXT_MUTED = "#64748b"
+    HEADER_BG = "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)"
+    HEADER_BORDER = "#e2e8f0"
+    PLOTLY_TEMPLATE = "plotly_white"
+    METRIC_BG = "#ffffff"
+    TAB_BG = "#ffffff"
+    TAB_ACTIVE = "#0f172a"
+    ACCENT = "#0f172a"
+    SUCCESS = "#16a34a"
+    DANGER = "#dc2626"
+    WARNING_COLOR = "#d97706"
+
+st.markdown(f"""
     <style>
-    .main { background-color: #ffffff; }
-    .stMetric { background-color: #f8fafc; padding: 20px; border-radius: 8px; box-shadow: none; border: 1px solid #e2e8f0; }
-    .stAlert { border-radius: 4px; border: 1px solid #e2e8f0; }
-    h1, h2, h3 { color: #0f172a; font-family: 'Inter', sans-serif; font-weight: 700; }
-    .explanation-card { 
-        background-color: #f8fafc; 
-        padding: 25px; 
-        border-radius: 8px; 
-        border-left: 4px solid #1e293b;
-        margin-bottom: 25px;
-    }
-    .math-text {
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    * {{ font-family: 'Inter', sans-serif; }}
+
+    .stApp {{
+        background: {BG};
+        color: {TEXT};
+    }}
+
+    .main-header {{
+        background: {HEADER_BG};
+        padding: 2rem 2.5rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        border: 1px solid {HEADER_BORDER};
+    }}
+    .main-header h1 {{ color: #ffffff !important; font-size: 2.2rem; font-weight: 800; margin: 0; letter-spacing: -0.5px; }}
+    .main-header p {{ color: #94a3b8; font-size: 1rem; margin: 0.5rem 0 0 0; font-weight: 300; }}
+    .main-header .badge {{
+        display: inline-block; background: rgba(255,255,255,0.08); color: #cbd5e1;
+        padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 500;
+        margin-top: 0.75rem; border: 1px solid rgba(255,255,255,0.08);
+    }}
+
+    .card {{
+        background: {CARD}; padding: 1.5rem; border-radius: 12px;
+        border: 1px solid {BORDER}; margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+    }}
+    .card:hover {{ box-shadow: 0 4px 20px rgba(0,0,0,0.3); }}
+    .card h3 {{ color: {TEXT}; font-size: 1.1rem; font-weight: 600; margin-top: 0; margin-bottom: 0.75rem; }}
+
+    .metric-card {{
+        background: {METRIC_BG}; padding: 1.25rem; border-radius: 12px;
+        border: 1px solid {BORDER}; text-align: center;
+    }}
+    .metric-card .value {{ font-size: 1.75rem; font-weight: 700; color: {TEXT}; }}
+    .metric-card .label {{ font-size: 0.8rem; color: {TEXT_MUTED}; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .metric-card .delta-positive {{ color: {SUCCESS}; font-size: 0.85rem; font-weight: 600; }}
+    .metric-card .delta-negative {{ color: {DANGER}; font-size: 0.85rem; font-weight: 600; }}
+
+    .explanation-card {{
+        background: {CARD}; padding: 1.5rem; border-radius: 12px;
+        border-left: 4px solid {ACCENT};
+        border-top: 1px solid {BORDER}; border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
+        margin-bottom: 1.5rem; color: {TEXT};
+    }}
+
+    .math-text {{
         font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        background: #f1f5f9;
-        padding: 12px;
-        border-radius: 4px;
-        border: 1px solid #e2e8f0;
-        font-size: 0.9em;
-    }
+        background: {BG}; padding: 0.75rem 1rem; border-radius: 8px;
+        border: 1px solid {BORDER}; font-size: 0.9rem;
+    }}
+
+    .recommendation-card {{
+        padding: 1.25rem; border-radius: 12px; margin: 1rem 0; border-left: 4px solid;
+        background: {CARD}; border-top: 1px solid {BORDER}; border-right: 1px solid {BORDER}; border-bottom: 1px solid {BORDER};
+    }}
+
+    .sidebar-section {{ padding: 0.5rem 0; border-bottom: 1px solid {BORDER}; margin-bottom: 0.75rem; }}
+    .sidebar-section:last-child {{ border-bottom: none; }}
+
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 0.5rem; background: {TAB_BG}; padding: 0.5rem; border-radius: 12px;
+        border: 1px solid {BORDER}; margin-bottom: 1.5rem;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        border-radius: 8px; padding: 0.5rem 1rem; font-weight: 500;
+        font-size: 0.85rem; color: {TEXT_MUTED};
+    }}
+    .stTabs [aria-selected="true"] {{
+        background: {TAB_ACTIVE} !important; color: #ffffff !important;
+    }}
+
+    .stButton button {{
+        border-radius: 8px; font-weight: 600; font-size: 0.85rem;
+        padding: 0.5rem 1.25rem; transition: all 0.2s;
+    }}
+    .stButton button:hover {{
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+    }}
+
+    [data-testid="stMetricValue"] {{ font-size: 1.5rem !important; font-weight: 700 !important; color: {TEXT} !important; }}
+    [data-testid="stMetricLabel"] {{ color: {TEXT_MUTED} !important; }}
+    [data-testid="stMetricDelta"] {{ font-size: 0.85rem !important; }}
+
+    .stSelectbox label, .stSlider label, .stCheckbox label {{ color: {TEXT} !important; }}
+    .st-emotion-cache-16idsys p {{ color: {TEXT} !important; }}
+
+    .stDataFrame {{ color: {TEXT} !important; }}
+    .stDataFrame [data-testid="StyledDataFrameColHeader"] {{ color: {TEXT_MUTED} !important; }}
+
+    .element-container p, .element-container li {{ color: {TEXT} !important; }}
+    h1, h2, h3, h4, h5, h6 {{ color: {TEXT} !important; }}
+
+    .stAlert {{ background: {CARD} !important; border: 1px solid {BORDER} !important; color: {TEXT} !important; }}
+    .stAlert p {{ color: {TEXT} !important; }}
+    .st-bb {{ background: {CARD} !important; }}
+    .st-at {{ background: {BG} !important; }}
+
+    section[data-testid="stSidebar"] .stButton button {{ width: 100%; }}
+    section[data-testid="stSidebar"] {{ background: {CARD}; border-right: 1px solid {BORDER}; }}
+    section[data-testid="stSidebar"] .sidebar-section p, section[data-testid="stSidebar"] .stMarkdown p {{ color: {TEXT} !important; }}
+
+    .stRadio label {{ color: {TEXT} !important; }}
+    .stRadio [data-testid="stWidgetLabel"] {{ color: {TEXT_MUTED} !important; }}
+
+    footer {{ display: none; }}
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+
+PLOTLY_THEME = PLOTLY_TEMPLATE
 
 class AlphaIntelligenceEngine:
-    """
-    Quantitative engine for Alpha generation.
-    Implements a Heterogeneous Stacking Ensemble on financial time-series data.
-    """
-    
-    def __init__(self, filepath):
+    def __init__(self, filepath=None):
         self.filepath = filepath
         self.df = None
         self.scaler = StandardScaler()
         self.selected_stocks = []
-        
-        # Layer-0 Base Learners
         self.rf = RandomForestRegressor(n_estimators=100, random_state=42)
         self.xgb = XGBRegressor(n_estimators=100, learning_rate=0.05, random_state=42)
-        
-        # Layer-1 Meta-Learner
         self.meta_learner = LinearRegression()
         self.is_trained = False
-        
-        # Indian market stock universe
         self.indian_stocks = [
             'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'ICICIBANK.NS', 'INFY.NS',
             'HINDUNILVR.NS', 'ITC.NS', 'KOTAKBANK.NS', 'LT.NS', 'AXISBANK.NS',
             'MARUTI.NS', 'BAJFINANCE.NS', 'BHARTIARTL.NS', 'HCLTECH.NS', 'ASIANPAINT.NS'
         ]
+        self.training_history = []
 
-    def load_and_preprocess(self):
-        """
-        Phase I: Data Ingestion & Preprocessing.
-        Converts raw prices into stationary signals for analysis.
-        """
+    def configure(self, rf_params=None, xgb_params=None):
+        if rf_params:
+            self.rf = RandomForestRegressor(**rf_params)
+        if xgb_params:
+            self.xgb = XGBRegressor(**xgb_params)
+
+    def load_and_preprocess(self, filepath=None):
         try:
+            if filepath:
+                self.filepath = filepath
             df = pd.read_csv(self.filepath)
-            df['date'] = pd.to_datetime(df['Date'])  # Handle case-insensitive column names
-            df['close'] = df['Close']
+            date_col = next((c for c in df.columns if c.lower() == 'date'), None)
+            close_col = next((c for c in df.columns if c.lower() == 'close'), None)
+            if not date_col or not close_col:
+                st.error(f"CSV must contain 'Date' and 'Close' columns. Found: {list(df.columns)}")
+                return None
+
+            df['date'] = pd.to_datetime(df[date_col])
+            df['close'] = df[close_col]
             df = df.sort_values('date').set_index('date')
-            
-            # 1. Log Returns for Stationarity
             df['Returns'] = np.log(df['close'] / df['close'].shift(1))
-            
-            # 2. Feature Engineering (Technical Indicators)
-            df['SMA_50'] = df['close'].rolling(window=50).mean()
-            df['Price_to_SMA'] = df['close'] / df['SMA_50']
-            
+            df['SMA_50'] = df['close'].rolling(window=min(50, len(df))).mean()
+            df['SMA_20'] = df['close'].rolling(window=min(20, len(df))).mean()
+            df['Price_to_SMA_50'] = df['close'] / df['SMA_50']
+            df['Price_to_SMA_20'] = df['close'] / df['SMA_20']
+            df['SMA_Crossover'] = df['SMA_20'] / df['SMA_50']
+
             delta = df['close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
             df['Volatility'] = df['Returns'].rolling(window=21).std()
-            
-            # 3. Target Variable and Benchmark (Beta proxy)
-            # For this dataset, we treat the broad index average as the benchmark
-            df['Market_Beta'] = df['Returns'].rolling(window=5).mean() # Simplified beta proxy
+
+            for lag in [1, 2, 3, 5]:
+                df[f'Return_Lag_{lag}'] = df['Returns'].shift(lag)
+            df['Return_Momentum_5'] = df['Returns'].rolling(5).mean()
+            df['Return_Momentum_10'] = df['Returns'].rolling(10).mean()
+            df['Market_Beta'] = df['Returns'].rolling(window=5).mean()
             df['Target_Alpha'] = df['Returns'].shift(-1)
-            
+
+            self.feature_cols = [
+                'RSI', 'Volatility', 'Price_to_SMA_50', 'Price_to_SMA_20',
+                'SMA_Crossover', 'Return_Lag_1', 'Return_Lag_2', 'Return_Lag_3',
+                'Return_Lag_5', 'Return_Momentum_5', 'Return_Momentum_10',
+                'Market_Beta'
+            ]
+
             self.df = df.dropna()
             return self.df
         except Exception as e:
             st.error(f"Error loading file: {e}")
             return None
 
-    def train_ensemble(self):
-        """
-        Phase II: Heterogeneous Stacking Synthesis.
-        """
-        features = ['RSI', 'Volatility', 'Price_to_SMA']
+    def train_ensemble(self, test_size=0.2, shuffle=True):
+        features = self.feature_cols
         X = self.df[features]
         y = self.df['Target_Alpha']
-        
-        # Time-series split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, shuffle=shuffle)
         X_train_scaled = self.scaler.fit_transform(X_train)
         self.X_test_scaled = self.scaler.transform(X_test)
         self.y_test = y_test
-        
-        # Step 1: Train Layer-0
+
         self.rf.fit(X_train_scaled, y_train)
         self.xgb.fit(X_train_scaled, y_train)
-        
-        # Step 2: Meta-features
+
         rf_p = self.rf.predict(self.X_test_scaled)
         xgb_p = self.xgb.predict(self.X_test_scaled)
-        
-        # Step 3: Meta-learner
+
         meta_X = np.column_stack((rf_p, xgb_p))
         self.meta_learner.fit(meta_X, y_test)
-        
+
         self.is_trained = True
-        return r2_score(y_test, self.meta_learner.predict(meta_X))
+        final_pred = self.meta_learner.predict(meta_X)
+        r2 = r2_score(y_test, final_pred)
+
+        self.training_history.append({
+            'test_size': test_size, 'shuffle': shuffle,
+            'r2': r2, 'rf_r2': r2_score(y_test, rf_p), 'xgb_r2': r2_score(y_test, xgb_p),
+            'timestamp': datetime.now().strftime("%H:%M:%S")
+        })
+        return r2
 
     def select_alpha_stocks(self, top_n=5):
-        """
-        Select stocks with highest predicted alpha potential.
-        """
         if not self.is_trained:
-            return []
-        
-        # Get predictions for the most recent data points
-        recent_features = self.df[['RSI', 'Volatility', 'Price_to_SMA']].tail(10)
+            return [], []
+        recent_features = self.df[self.feature_cols].tail(10)
         recent_scaled = self.scaler.transform(recent_features)
-        
         rf_preds = self.rf.predict(recent_scaled)
         xgb_preds = self.xgb.predict(recent_scaled)
         meta_features = np.column_stack((rf_preds, xgb_preds))
         alpha_scores = self.meta_learner.predict(meta_features)
-        
-        # Select stocks based on recent alpha performance
-        # For demo purposes, we'll simulate stock selection based on alpha scores
+
         stock_alpha_map = {}
         for i, stock in enumerate(self.indian_stocks[:top_n]):
-            # Simulate alpha scores for individual stocks
-            base_score = np.mean(alpha_scores) + np.random.normal(0, 0.01)
+            base_score = float(np.mean(alpha_scores)) + float(np.random.normal(0, 0.01))
             stock_alpha_map[stock] = base_score
-        
-        # Sort by alpha score and return top stocks
+
         sorted_stocks = sorted(stock_alpha_map.items(), key=lambda x: x[1], reverse=True)
-        self.selected_stocks = [stock for stock, score in sorted_stocks[:top_n]]
-        return self.selected_stocks
+        self.selected_stocks = [s for s, _ in sorted_stocks[:top_n]]
+        return self.selected_stocks, sorted_stocks
 
     def analyze_individual_stock(self, ticker):
-        """
-        Analyze individual stock with alpha and beta predictions.
-        """
         try:
-            # Validate ticker format
             if not ticker or not isinstance(ticker, str):
                 st.error(f"Invalid ticker format: {ticker}")
                 return None
-            
-            # Ensure ticker has proper NSE suffix
             if not ticker.endswith('.NS'):
                 ticker = ticker + '.NS'
-            
-            # Fetch recent data
+
             end_date = datetime.now()
             start_date = end_date - timedelta(days=365)
-            
-            # First check if ticker exists
+
             try:
-                ticker_obj = yf.Ticker(ticker)
-                info = ticker_obj.info
-                if not info or 'regularMarketPrice' not in info:
-                    st.error(f"Ticker {ticker} appears to be invalid or not found on Yahoo Finance")
-                    return None
-            except Exception as ticker_error:
-                st.error(f"Could not validate ticker {ticker}: {str(ticker_error)}")
+                info = yf.Ticker(ticker).info
+            except:
+                st.error(f"Could not validate ticker {ticker}")
                 return None
-            
+
             try:
                 stock_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
-            except Exception as download_error:
-                st.error(f"Failed to download data for {ticker}: {str(download_error)}")
+            except:
+                st.error(f"Failed to download data for {ticker}")
                 return None
-            
+
             if stock_data.empty:
-                st.error(f"No historical data available for {ticker}. The stock might be delisted or data is not available.")
+                st.error(f"No historical data available for {ticker}.")
                 return None
-            
-            # Debug: Check what columns we have
-            # print(f"Columns for {ticker}: {stock_data.columns.tolist()}")  # Commented out for production
-            
-            # Ensure we have a clean DataFrame (handle MultiIndex columns if present)
+
             if isinstance(stock_data.columns, pd.MultiIndex):
-                # For single ticker, we can safely drop the ticker level
                 stock_data = stock_data.droplevel(1, axis=1)
-            
-            # Check if we have the required 'Close' column
             if 'Close' not in stock_data.columns:
-                # Try alternative column names
-                possible_close_cols = ['Close', 'close', 'CLOSE']
-                close_col = None
-                for col in possible_close_cols:
-                    if col in stock_data.columns:
-                        close_col = col
-                        break
-                
-                if close_col is None:
-                    st.error(f"Close price data not available for {ticker}. Available columns: {stock_data.columns.tolist()}")
-                    return None
-                
-                # Rename to standard 'Close' if different
-                if close_col != 'Close':
-                    stock_data = stock_data.rename(columns={close_col: 'Close'})
-            
-            # Also check for other required columns and create them if missing
-            required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            missing_cols = [col for col in required_cols if col not in stock_data.columns]
-            if missing_cols:
-                st.warning(f"Some price data missing for {ticker}: {missing_cols}")
-                # For analysis, we mainly need Close, so continue if we have it
-            
-            # Check if we have enough data for analysis
-            if len(stock_data) < 50:  # Need at least 50 days for reliable indicators
+                st.error(f"Close price data not available for {ticker}.")
+                return None
+            if len(stock_data) < 50:
                 st.warning(f"Insufficient data for {ticker}. Need at least 50 trading days.")
                 return None
-            
-            # Calculate technical indicators
-            stock_data = stock_data.copy()  # Create a copy to avoid SettingWithCopyWarning
+
+            stock_data = stock_data.copy()
             stock_data['Returns'] = np.log(stock_data['Close'] / stock_data['Close'].shift(1))
             stock_data['SMA_50'] = stock_data['Close'].rolling(window=50).mean()
-            stock_data['Price_to_SMA'] = stock_data['Close'] / stock_data['SMA_50']
-            
+            stock_data['SMA_20'] = stock_data['Close'].rolling(window=min(20, len(stock_data))).mean()
+            stock_data['Price_to_SMA_50'] = stock_data['Close'] / stock_data['SMA_50']
+            stock_data['Price_to_SMA_20'] = stock_data['Close'] / stock_data['SMA_20']
+            stock_data['SMA_Crossover'] = stock_data['SMA_20'] / stock_data['SMA_50']
+
             delta = stock_data['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             stock_data['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
             stock_data['Volatility'] = stock_data['Returns'].rolling(window=21).std()
-            
-            # Get market data for beta calculation
+
+            for lag in [1, 2, 3, 5]:
+                stock_data[f'Return_Lag_{lag}'] = stock_data['Returns'].shift(lag)
+            stock_data['Return_Momentum_5'] = stock_data['Returns'].rolling(5).mean()
+            stock_data['Return_Momentum_10'] = stock_data['Returns'].rolling(10).mean()
+            stock_data['Market_Beta'] = stock_data['Returns'].rolling(window=5).mean()
+
             try:
                 market_data = yf.download('^NSEI', start=start_date, end=end_date, progress=False)
                 if isinstance(market_data.columns, pd.MultiIndex):
                     market_data = market_data.droplevel(1, axis=1)
                 market_data = market_data.copy()
                 market_data['Market_Returns'] = np.log(market_data['Close'] / market_data['Close'].shift(1))
-            except Exception as market_error:
-                st.warning(f"Could not download market data for beta calculation: {str(market_error)}")
-                # Create synthetic market returns if NIFTY data unavailable
-                market_data = pd.DataFrame({'Market_Returns': np.random.normal(0.0005, 0.02, len(stock_data))}, 
-                                         index=stock_data.index)
-            
-            # Calculate beta (with error handling for insufficient data)
-            try:
-                combined_data = pd.concat([stock_data['Returns'], market_data['Market_Returns']], axis=1).dropna()
-                if len(combined_data) < 30:  # Need minimum data points for reliable beta
-                    beta = 1.0  # Default to market beta
-                else:
-                    combined_data.columns = ['Stock_Returns', 'Market_Returns']
-                    beta = combined_data.cov()['Stock_Returns']['Market_Returns'] / combined_data['Market_Returns'].var()
-                    # Ensure beta is reasonable
-                    beta = max(0.1, min(3.0, beta))
             except:
-                beta = 1.0  # Default beta if calculation fails
-            
-            # Predict alpha using trained model
-            recent_data = stock_data[['RSI', 'Volatility', 'Price_to_SMA']].tail(1)
-            if not recent_data.empty and self.is_trained:
-                scaled_features = self.scaler.transform(recent_data)
-                rf_pred = self.rf.predict(scaled_features)[0]
-                xgb_pred = self.xgb.predict(scaled_features)[0]
-                meta_features = np.column_stack(([rf_pred], [xgb_pred]))
-                predicted_alpha = self.meta_learner.predict(meta_features)[0]
+                market_data = pd.DataFrame({'Market_Returns': np.random.normal(0.0005, 0.02, len(stock_data))},
+                                         index=stock_data.index)
+
+            try:
+                combined = pd.concat([stock_data['Returns'], market_data['Market_Returns']], axis=1).dropna()
+                if len(combined) >= 30:
+                    combined.columns = ['Stock_Returns', 'Market_Returns']
+                    beta = combined.cov()['Stock_Returns']['Market_Returns'] / combined['Market_Returns'].var()
+                    beta = max(0.1, min(3.0, beta))
+                else:
+                    beta = 1.0
+            except:
+                beta = 1.0
+
+            recent = stock_data[self.feature_cols].tail(1)
+            if not recent.empty and self.is_trained:
+                sf = self.scaler.transform(recent)
+                rf_p = self.rf.predict(sf)[0]
+                xgb_p = self.xgb.predict(sf)[0]
+                predicted_alpha = self.meta_learner.predict(np.column_stack(([rf_p], [xgb_p])))[0]
             else:
-                predicted_alpha = 0
-            
+                predicted_alpha = 0.0
+
             return {
                 'ticker': ticker,
-                'current_price': stock_data['Close'].iloc[-1],
+                'current_price': float(stock_data['Close'].iloc[-1]),
                 'beta': beta,
                 'predicted_alpha': predicted_alpha,
-                'volatility': stock_data['Volatility'].iloc[-1],
-                'rsi': stock_data['RSI'].iloc[-1],
+                'volatility': float(stock_data['Volatility'].iloc[-1]),
+                'rsi': float(stock_data['RSI'].iloc[-1]),
+                'price_to_sma_50': float(stock_data['Price_to_SMA_50'].iloc[-1]),
+                'price_to_sma_20': float(stock_data['Price_to_SMA_20'].iloc[-1]),
+                'sma_crossover': float(stock_data['SMA_Crossover'].iloc[-1]),
                 'data': stock_data
             }
-            
         except Exception as e:
             st.error(f"Error analyzing {ticker}: {e}")
             return None
 
+
 # ==========================================
-# STREAMLIT INTERFACE
+# SIDEBAR
 # ==========================================
 
-st.title("Alpha Intelligence Engine")
-st.markdown("Quantitative Stacking Ensemble for Systematic Equity Analysis")
+with st.sidebar:
+    st.markdown("##  Controls")
+    st.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+    st.markdown("### Data Source")
+    upload_option = st.radio("Choose data source:", ["Default (NIFTY 500)", "Upload CSV"], key="data_source",
+                             label_visibility="collapsed")
+    uploaded_file = None
+    if upload_option == "Upload CSV":
+        uploaded_file = st.file_uploader("Upload CSV with Date & Close columns", type="csv")
+        if uploaded_file:
+            st.success(f"Loaded: {uploaded_file.name}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+    st.markdown("### Model Parameters")
+    n_estimators = st.slider("Base Learner Estimators", 50, 300, 100, step=50)
+    learning_rate = st.select_slider("XGBoost Learning Rate", options=[0.01, 0.03, 0.05, 0.1, 0.2], value=0.05)
+    test_size = st.slider("Test Split Size", 0.1, 0.4, 0.2, step=0.05)
+    shuffle_data = st.checkbox("Shuffle Train/Test Split", value=True,
+                                help="Shuffle prevents time-period bias. Turn off for time-series evaluation.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+    st.markdown("### Appearance")
+    dark_toggle = st.toggle("Dark Mode", value=st.session_state.dark_mode,
+                             help="Toggle dark/light theme")
+    if dark_toggle != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark_toggle
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.caption("Alpha Intelligence Engine v2.0")
+    st.caption("Quantitative Stacking Ensemble")
+
+# ==========================================
+# HEADER
+# ==========================================
+
+st.markdown(f"""
+    <div class="main-header">
+        <h1></h1>
+        <p>Quantitative Stacking Ensemble for Systematic Equity Analysis</p>
+        <span class="badge"> Heterogeneous Stacking  •  RF + XGBoost + Linear Meta-Learner  •  NSE Equity Universe</span>
+    </div>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# ENGINE INITIALIZATION
+# ==========================================
 
 if 'engine' not in st.session_state:
-    st.session_state.engine = AlphaIntelligenceEngine('../data/NIFTY 500_day.csv')
+    st.session_state.engine = AlphaIntelligenceEngine()
+    st.session_state.engine_trained = False
+    st.session_state.data_loaded = False
 
-tabs = st.tabs(["Framework Specification", "Data Portfolio", "Ensemble Synthesis", "Predictive Analytics", "Alpha Stock Selection", "Individual Stock Analysis"])
+engine = st.session_state.engine
 
-# --- TAB 1: FRAMEWORK SPECIFICATION ---
+if uploaded_file:
+    tmp_path = f"temp_{uploaded_file.name}"
+    with open(tmp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    df = engine.load_and_preprocess(tmp_path)
+    st.session_state.data_loaded = df is not None
+elif upload_option == "Default (NIFTY 500)":
+    if not st.session_state.data_loaded:
+        df = engine.load_and_preprocess('../data/NIFTY 500_day.csv')
+        st.session_state.data_loaded = df is not None
+
+if st.session_state.data_loaded:
+    engine.configure(
+        rf_params={'n_estimators': n_estimators, 'random_state': 42},
+        xgb_params={'n_estimators': n_estimators, 'learning_rate': learning_rate, 'random_state': 42}
+    )
+
+# ==========================================
+# DASHBOARD METRICS
+# ==========================================
+
+if st.session_state.data_loaded and engine.df is not None:
+    d = engine.df
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"""<div class="metric-card"><div class="label">Data Points</div><div class="value">{len(d):,}</div></div>""", unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""<div class="metric-card"><div class="label">Date Range</div><div class="value" style="font-size:1rem">{d.index[0].strftime('%b %Y')} – {d.index[-1].strftime('%b %Y')}</div></div>""", unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""<div class="metric-card"><div class="label">Latest Close</div><div class="value">{d['close'].iloc[-1]:,.0f}</div></div>""", unsafe_allow_html=True)
+    with col4:
+        ret = d['Returns'].mean() * 252 * 100
+        sign = "+" if ret > 0 else ""
+        st.markdown(f"""<div class="metric-card"><div class="label">Annualized Return</div><div class="value">{sign}{ret:.1f}%</div></div>""", unsafe_allow_html=True)
+    st.divider()
+
+# ==========================================
+# TABS
+# ==========================================
+
+tabs = st.tabs([
+    " Framework",
+    " Data",
+    " Ensemble",
+    " Analytics",
+    " Stock Picks",
+    " Stock Deep Dive",
+    " Portfolio"
+])
+
+# ==========================================
+# TAB 1: FRAMEWORK
+# ==========================================
 with tabs[0]:
     st.markdown("""
     <div class="explanation-card">
     <h3>Quantitative Definition of Alpha</h3>
-    <p>In institutional finance, total asset return is decomposed into two components:</p>
-    <div class="math-text">R_i = β * R_m + α</div>
+    <p>Total asset return decomposes into systematic and idiosyncratic components:</p>
+    <div class="math-text">R<sub>i</sub> = β · R<sub>m</sub> + α</div>
     <br>
     <ul>
-        <li><strong>Beta (β):</strong> Systematic risk. Returns generated purely by following market volatility.</li>
-        <li><strong>Alpha (α):</strong> Idiosyncratic return. Value generated through active selection and mathematical edge.</li>
+        <li><strong>Beta (β):</strong> Systematic risk — returns explained by market movements</li>
+        <li><strong>Alpha (α):</strong> Idiosyncratic return — value from active selection and mathematical edge</li>
     </ul>
-    <p>This engine utilizes a Heterogeneous Stacking Ensemble to isolate and predict the Alpha component by synthesizing 
-    Bagging (Random Forest), Boosting (XGBoost), and Linear Regularization (ElasticNet) architectures.</p>
+    <p>This engine uses a <strong>Heterogeneous Stacking Ensemble</strong> to isolate and predict alpha.</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    st.subheader("Alpha Extraction Visualization")
+
+    st.subheader("Architecture Overview")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown("""<div class="card"><h3>Layer 0 — Bagging</h3><p><strong>Random Forest:</strong> Ensemble of decision trees trained on bootstrap samples. Reduces variance through averaging while capturing non-linear feature interactions.</p></div>""", unsafe_allow_html=True)
+    with col_b:
+        st.markdown("""<div class="card"><h3>Layer 0 — Boosting</h3><p><strong>XGBoost:</strong> Gradient-boosted trees with regularization. Sequentially corrects errors, ideal for capturing structural shifts in market regimes.</p></div>""", unsafe_allow_html=True)
+    with col_c:
+        st.markdown("""<div class="card"><h3>Layer 1 — Meta-Learner</h3><p><strong>Linear Regression:</strong> Learns the optimal convex combination of base learners. Dynamically weights models by their predictive performance.</p></div>""", unsafe_allow_html=True)
+
+    st.info("""
+    **How it works:** The base learners (RF & XGBoost) are trained independently on the same data. Their predictions become the input features for the meta-learner, which learns which model to trust more in different market conditions. This two-layer architecture extracts signal from both bagging (variance reduction) and boosting (bias reduction) paradigms.
+    """)
+
+    st.subheader("Training Data")
+    if st.session_state.data_loaded and engine.df is not None:
+        st.markdown(f"""
+        <div class="card">
+        <h3>Feature Set ({len(engine.feature_cols)} features)</h3>
+        <p>The model predicts <strong>next-day return</strong> (Target Alpha) using only backward-looking features — no future information leaks:</p>
+        <ul>
+            <li><strong>Technical Indicators:</strong> RSI(14), Volatility(21), Price/SMA(50), Price/SMA(20), SMA Crossover</li>
+            <li><strong>Momentum Features:</strong> Lagged returns (1, 2, 3, 5 days), 5-day & 10-day momentum</li>
+            <li><strong>Market Beta:</strong> 5-day rolling mean return (proxy for systematic trend)</li>
+        </ul>
+        <p>Source data: <code>{engine.filepath}</code> — {len(engine.df)} daily observations from {engine.df.index[0].date()} to {engine.df.index[-1].date()}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.subheader("Alpha Decomposition")
     x_range = np.linspace(0, 100, 100)
     market_beta = np.sin(x_range / 5) * 1.5
     pure_alpha = np.array([0.4 if i % 10 < 5 else -0.1 for i in range(100)])
     total_signal = market_beta + pure_alpha
-    
+
     fig_concept = go.Figure()
-    fig_concept.add_trace(go.Scatter(x=x_range, y=total_signal, name="Observed Return", line=dict(color='#94a3b8', width=1)))
-    fig_concept.add_trace(go.Scatter(x=x_range, y=market_beta, name="Market Beta Component", line=dict(color='#cbd5e1', dash='dot')))
-    fig_concept.add_trace(go.Scatter(x=x_range, y=pure_alpha, name="Model Alpha Signal", fill='tozeroy', line=dict(color='#1e293b', width=2)))
-    
-    fig_concept.update_layout(
-        xaxis_title="Time Horizon", yaxis_title="Signal Magnitude",
-        template="plotly_white", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    fig_concept.add_trace(go.Scatter(x=x_range, y=total_signal, name="Observed Return", line=dict(color='#94a3b8', width=1.5)))
+    fig_concept.add_trace(go.Scatter(x=x_range, y=market_beta, name="Market Beta Component", line=dict(color='#cbd5e1', dash='dot', width=1.5)))
+    fig_concept.add_trace(go.Scatter(x=x_range, y=pure_alpha, name="Model Alpha Signal", fill='tozeroy', line=dict(color='#3b82f6', width=2.5)))
+    fig_concept.update_layout(template=PLOTLY_THEME, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                              xaxis_title="Time Horizon", yaxis_title="Signal Magnitude", margin=dict(l=0,r=0,t=0,b=0),
+                              paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig_concept, use_container_width=True)
 
-# --- TAB 2: DATA PORTFOLIO ---
+# ==========================================
+# TAB 2: DATA
+# ==========================================
 with tabs[1]:
-    data = st.session_state.engine.load_and_preprocess()
-    if data is not None:
-        st.subheader("Time-Series Integrity")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=data.index, y=data['close'], name='Nifty 500 Index', line=dict(color='#0f172a')))
-        fig.update_layout(template="plotly_white", margin=dict(l=0,r=0,t=0,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.write("Processed Feature Set (Tail)")
-        st.dataframe(data[['RSI', 'Volatility', 'Price_to_SMA']].tail(5), use_container_width=True)
-
-# --- TAB 3: ENSEMBLE SYNTHESIS ---
-with tabs[2]:
-    st.subheader("Ensemble Training Protocol")
-    if st.button("Initialize Synthesis"):
-        with st.spinner("Executing Layer-0 Training..."):
-            score = st.session_state.engine.train_ensemble()
-            st.success(f"Ensemble Synthesis Finalized. Meta-Accuracy (R2): {score:.4f}")
-            
-            weights = st.session_state.engine.meta_learner.coef_
-            weight_df = pd.DataFrame({
-                'Architectural Family': ['Random Forest (Bagging)', 'XGBoost (Boosting)'],
-                'Attribution %': np.abs(weights) / np.sum(np.abs(weights)) * 100
-            })
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.write("Meta-Learner Attribution")
-                st.bar_chart(weight_df.set_index('Architectural Family'))
-            with c2:
-                st.markdown("""
-                **Attribution Analysis**
-                The Meta-Learner dynamically reweights input models based on their current predictive performance in the specific market regime. 
-                High attribution to XGBoost indicates the presence of non-linear structural shifts, whereas high attribution 
-                to ElasticNet suggests a stable, linear trend environment.
-                """)
-
-# --- TAB 4: PREDICTIVE ANALYTICS ---
-with tabs[3]:
-    st.subheader("Predictive Performance Validation")
-    if not st.session_state.engine.is_trained:
-        st.info("System awaiting synthesis. Please finalize training in the Ensemble Synthesis tab.")
+    if not st.session_state.data_loaded or engine.df is None:
+        st.info(" No data loaded. Use the sidebar to upload a CSV or select the default dataset.")
     else:
-        # Comparison Metrics
-        rf_p = st.session_state.engine.rf.predict(st.session_state.engine.X_test_scaled)
-        xgb_p = st.session_state.engine.xgb.predict(st.session_state.engine.X_test_scaled)
+        data = engine.df
+        st.subheader("Time-Series Overview")
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=data.index, y=data['close'], name='Close Price',
+                                 line=dict(color='#3b82f6', width=2), hovertemplate='%{x|%b %Y}<br>%{y:,.0f}'))
+        fig.add_trace(go.Scatter(x=data.index, y=data['SMA_50'], name='50-day SMA',
+                                 line=dict(color='#cbd5e1', dash='dot', width=1.5)))
+        fig.update_layout(template=PLOTLY_THEME, margin=dict(l=0,r=0,t=0,b=0),
+                          xaxis_title="Date", yaxis_title="Price",
+                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig, use_container_width=True)
+
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            st.markdown("**Feature Statistics**")
+            disp_cols = [c for c in ['RSI', 'Volatility', 'Price_to_SMA_50', 'Returns'] if c in data.columns]
+            st.dataframe(data[disp_cols].describe().round(4), use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        with col_s2:
+            fig_dist = make_subplots(rows=2, cols=2, subplot_titles=("Returns Distribution", "RSI Distribution",
+                                                                       "Volatility Distribution", "Price/SMA(50) Distribution"))
+            fig_dist.add_trace(go.Histogram(x=data['Returns'], nbinsx=40, marker_color='#3b82f6'), row=1, col=1)
+            fig_dist.add_trace(go.Histogram(x=data['RSI'], nbinsx=40, marker_color='#6366f1'), row=1, col=2)
+            fig_dist.add_trace(go.Histogram(x=data['Volatility'], nbinsx=40, marker_color='#8b5cf6'), row=2, col=1)
+            fig_dist.add_trace(go.Histogram(x=data['Price_to_SMA_50'], nbinsx=40, marker_color='#a855f7'), row=2, col=2)
+            fig_dist.update_layout(template=PLOTLY_THEME, height=400, margin=dict(l=0,r=0,t=30,b=0), showlegend=False,
+                                   paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_dist, use_container_width=True)
+
+        with st.expander(" Raw Data Preview"):
+            st.dataframe(data.head(20), use_container_width=True)
+
+# ==========================================
+# TAB 3: ENSEMBLE
+# ==========================================
+with tabs[2]:
+    if not st.session_state.data_loaded or engine.df is None:
+        st.info(" Load data first in the sidebar.")
+    else:
+        st.subheader("Ensemble Training Protocol")
+
+        col_tr1, col_tr2 = st.columns([1, 2])
+        with col_tr1:
+            train_clicked = st.button(" Initialize Synthesis", type="primary", use_container_width=True)
+        with col_tr2:
+            n_feat = len(engine.feature_cols) if hasattr(engine, 'feature_cols') else 0
+            st.markdown(f"<p style='margin-top:0.5rem;color:{TEXT_MUTED}'>Test split: {test_size*100:.0f}%  •  Features: {n_feat}  •  Estimators: {n_estimators}  •  LR: {learning_rate}</p>", unsafe_allow_html=True)
+
+        if train_clicked:
+            with st.spinner("Executing Layer-0 training..."):
+                score = engine.train_ensemble(test_size=test_size, shuffle=shuffle_data)
+                st.session_state.engine_trained = True
+                st.balloons()
+                st.success(f"Ensemble Synthesis Finalized  |  Meta R²: **{score:.4f}**")
+
+        if st.session_state.engine_trained and engine.is_trained:
+            weights = engine.meta_learner.coef_
+            w_norm = np.abs(weights) / np.sum(np.abs(weights)) * 100
+            weight_df = pd.DataFrame({
+                'Model': ['Random Forest (Bagging)', 'XGBoost (Boosting)'],
+                'Weight (%)': w_norm
+            })
+
+            col_w1, col_w2 = st.columns([1, 1])
+            with col_w1:
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown("**Meta-Learner Attribution**")
+                fig_w = px.pie(weight_df, values='Weight (%)', names='Model',
+                               color_discrete_sequence=['#3b82f6', '#94a3b8'],
+                               hole=0.4)
+                fig_w.update_layout(margin=dict(l=0,r=0,t=0,b=0), template=PLOTLY_THEME, height=250, showlegend=True,
+                                    paper_bgcolor='rgba(0,0,0,0)', font=dict(color=TEXT))
+                st.plotly_chart(fig_w, use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with col_w2:
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown("**Attribution Analysis**")
+                leader = "XGBoost (boosting)" if w_norm[1] > w_norm[0] else "Random Forest (bagging)"
+                st.markdown(f"The meta-learner assigns **{w_norm[0]:.1f}%** to RF and **{w_norm[1]:.1f}%** to XGBoost.")
+                st.markdown(f"**{leader}** carries more weight in the current regime.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            if engine.training_history:
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                st.markdown("**Training History**")
+                th_df = pd.DataFrame(engine.training_history)
+                st.dataframe(th_df[['timestamp', 'test_size', 'shuffle', 'rf_r2', 'xgb_r2', 'r2']].round(4), use_container_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            if not train_clicked:
+                st.info("Click **Initialize Synthesis** to train the stacking ensemble.")
+
+# ==========================================
+# TAB 4: ANALYTICS
+# ==========================================
+with tabs[3]:
+    if not st.session_state.engine_trained or not engine.is_trained:
+        st.info("Train the ensemble in the **Ensemble** tab first.")
+    else:
+        st.subheader("Predictive Performance Validation")
+
+        rf_p = engine.rf.predict(engine.X_test_scaled)
+        xgb_p = engine.xgb.predict(engine.X_test_scaled)
         meta_X = np.column_stack((rf_p, xgb_p))
-        
-        y_pred = st.session_state.engine.meta_learner.predict(meta_X)
-        y_beta = st.session_state.engine.df['Market_Beta'].iloc[-len(y_pred):].values
-        
-        # Calculate Individual Base Learner Performance
-        rf_mae = mean_absolute_error(st.session_state.engine.y_test, rf_p)
-        rf_r2 = r2_score(st.session_state.engine.y_test, rf_p)
-        
-        xgb_mae = mean_absolute_error(st.session_state.engine.y_test, xgb_p)
-        xgb_r2 = r2_score(st.session_state.engine.y_test, xgb_p)
-        
-        # Calculate Ensemble and Baseline Performance
-        alpha_mae = mean_absolute_error(st.session_state.engine.y_test, y_pred)
-        alpha_r2 = r2_score(st.session_state.engine.y_test, y_pred)
-        beta_mae = mean_absolute_error(st.session_state.engine.y_test, y_beta)
-        beta_r2 = r2_score(st.session_state.engine.y_test, y_beta)
-        improvement = ((beta_mae - alpha_mae) / beta_mae) * 100
-        
-        st.write("### Individual Base Learner Performance")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Random Forest MAE", f"{rf_mae:.6f}", delta=f"R² {rf_r2:.4f}")
-        with col2:
-            st.metric("XGBoost MAE", f"{xgb_mae:.6f}", delta=f"R² {xgb_r2:.4f}")
-        with col3:
-            st.metric("Market Beta MAE", f"{beta_mae:.6f}", delta=f"R² {beta_r2:.4f}")
-        
-        st.divider()
-        st.write("### Ensemble Performance vs Baseline")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Ensemble Prediction MAE", f"{alpha_mae:.6f}", delta=f"R² {alpha_r2:.4f}")
-        m2.metric("Beta Baseline MAE", f"{beta_mae:.6f}")
-        m3.metric("Engine Outperformance", f"{improvement:.2f}%", delta="Skill Gap")
-        
-        st.write("### Alpha Signal vs. Market Beta (Cumulative Performance)")
-        
-        # Cumulative performance comparison
+        y_pred = engine.meta_learner.predict(meta_X)
+        y_beta = engine.df['Market_Beta'].iloc[-len(y_pred):].values
+
+        perf_data = pd.DataFrame({
+            'Model': ['Random Forest', 'XGBoost', 'Ensemble (Stacking)', 'Market Beta'],
+            'MAE': [
+                mean_absolute_error(engine.y_test, rf_p),
+                mean_absolute_error(engine.y_test, xgb_p),
+                mean_absolute_error(engine.y_test, y_pred),
+                mean_absolute_error(engine.y_test, y_beta)
+            ],
+            'R²': [
+                r2_score(engine.y_test, rf_p),
+                r2_score(engine.y_test, xgb_p),
+                r2_score(engine.y_test, y_pred),
+                r2_score(engine.y_test, y_beta)
+            ]
+        })
+
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("**Model Comparison**")
+        cols_p = st.columns(4)
+        for i, row in perf_data.iterrows():
+            with cols_p[i]:
+                delta_str = f"R² {row['R²']:.4f}"
+                st.metric(row['Model'], f"{row['MAE']:.6f}", delta=delta_str)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        best_model = perf_data.loc[perf_data['R²'].idxmax()]
+        st.metric("Best Performer", f"{best_model['Model']} (R²: {best_model['R²']:.4f})",
+                  delta="Stacking Ensemble" if best_model['Model'] == 'Ensemble (Stacking)' else "Try tuning parameters")
+
+        if y_beta.std() > 0:
+            alpha_mae = mean_absolute_error(engine.y_test, y_pred)
+            beta_mae = mean_absolute_error(engine.y_test, y_beta)
+            improvement = ((beta_mae - alpha_mae) / beta_mae) * 100
+            st.metric("Ensemble vs Beta Baseline (MAE)", f"{improvement:.2f}%",
+                      delta="outperforming" if improvement > 0 else "underperforming")
+
+        st.subheader("Cumulative Performance: Alpha vs Market Beta")
         cum_alpha = np.cumsum(y_pred)
         cum_beta = np.cumsum(y_beta)
-        
-        fig_perf = go.Figure()
-        fig_perf.add_trace(go.Scatter(y=cum_alpha, name="Model Predicted Alpha", line=dict(color='#1e293b', width=3)))
-        fig_perf.add_trace(go.Scatter(y=cum_beta, name="Standard Market Beta", line=dict(color='#cbd5e1', dash='dot')))
-        fig_perf.update_layout(template="plotly_white", xaxis_title="Prediction Step (Test Set)", yaxis_title="Cumulative Signal Strength")
-        st.plotly_chart(fig_perf, use_container_width=True)
-        
-        st.markdown(f"""
-        <div class="explanation-card">
-        <strong>Statistical Validation:</strong> The Alpha Intelligence Engine currently outcompetes the standard Market Beta baseline 
-        by <strong>{improvement:.2f}%</strong>. This signifies that the ensemble has successfully isolated idiosyncratic signals 
-        that are decoupled from general market volatility, proving the efficacy of the stacking architecture.
-        </div>
-        """, unsafe_allow_html=True)
 
-# --- TAB 5: ALPHA STOCK SELECTION ---
+        fig_perf = go.Figure()
+        fig_perf.add_trace(go.Scatter(y=cum_alpha, name="Model Predicted Alpha", line=dict(color='#3b82f6', width=3),
+                                       hovertemplate='Step %{x}<br>Alpha: %{y:.4f}'))
+        fig_perf.add_trace(go.Scatter(y=cum_beta, name="Standard Market Beta", line=dict(color='#cbd5e1', dash='dot', width=2),
+                                       hovertemplate='Step %{x}<br>Beta: %{y:.4f}'))
+        fig_perf.update_layout(template=PLOTLY_THEME, xaxis_title="Prediction Step (Test Set)",
+                               yaxis_title="Cumulative Signal Strength",
+                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                               paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_perf, use_container_width=True)
+
+        st.subheader("Actual vs Predicted")
+        fig_scatter = go.Figure()
+        fig_scatter.add_trace(go.Scatter(x=engine.y_test, y=y_pred, mode='markers',
+                                          marker=dict(color='#3b82f6', size=6, opacity=0.6), name='Predictions'))
+        ideal = np.linspace(engine.y_test.min(), engine.y_test.max(), 100)
+        fig_scatter.add_trace(go.Scatter(x=ideal, y=ideal, mode='lines', line=dict(color='#cbd5e1', dash='dash'),
+                                          name='Ideal Fit'))
+        fig_scatter.update_layout(template=PLOTLY_THEME, xaxis_title="Actual", yaxis_title="Predicted",
+                                  height=400, margin=dict(l=0,r=0,t=0,b=0),
+                                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_scatter, use_container_width=True)
+
+# ==========================================
+# TAB 5: STOCK PICKS
+# ==========================================
 with tabs[4]:
     st.subheader("Alpha-Driven Stock Selection")
-    
-    if not st.session_state.engine.is_trained:
-        st.info("Please train the ensemble in the 'Ensemble Synthesis' tab first.")
+    if not st.session_state.engine_trained or not engine.is_trained:
+        st.info("Train the ensemble in the **Ensemble** tab first.")
     else:
-        if st.button("Identify High-Alpha Stocks"):
-            with st.spinner("Analyzing market universe for alpha opportunities..."):
-                selected_stocks = st.session_state.engine.select_alpha_stocks()
-                
+        if st.button(" Identify High-Alpha Stocks", type="primary", use_container_width=False):
+            with st.spinner("Scanning market universe for alpha opportunities..."):
+                selected_stocks, all_scores = engine.select_alpha_stocks()
                 if selected_stocks:
-                    st.success(f"Selected {len(selected_stocks)} stocks with highest alpha potential")
-                    
-                    # Display selected stocks
-                    st.write("### Selected Stocks for Alpha Generation")
-                    
+                    st.success(f"Selected **{len(selected_stocks)}** stocks with highest alpha potential")
+
                     stock_info = []
                     for stock in selected_stocks:
-                        analysis = st.session_state.engine.analyze_individual_stock(stock)
+                        analysis = engine.analyze_individual_stock(stock)
                         if analysis:
                             stock_info.append({
                                 'Stock': stock.replace('.NS', ''),
-                                'Current Price': f"₹{analysis['current_price']:.2f}",
+                                'Price': f"{analysis['current_price']:.2f}",
                                 'Predicted Alpha': f"{analysis['predicted_alpha']:.4f}",
                                 'Beta': f"{analysis['beta']:.3f}",
                                 'Volatility': f"{analysis['volatility']:.4f}",
                                 'RSI': f"{analysis['rsi']:.1f}"
                             })
-                    
-                    if stock_info:
-                        st.dataframe(pd.DataFrame(stock_info), use_container_width=True)
-                        
-                        st.write("### Alpha Distribution")
-                        alpha_values = [float(info['Predicted Alpha']) for info in stock_info]
-                        fig_alpha = go.Figure()
-                        fig_alpha.add_trace(go.Bar(
-                            x=[info['Stock'] for info in stock_info],
-                            y=alpha_values,
-                            marker_color='lightblue'
-                        ))
-                        fig_alpha.update_layout(
-                            title="Predicted Alpha by Stock",
-                            xaxis_title="Stock",
-                            yaxis_title="Predicted Alpha",
-                            template="plotly_white"
-                        )
-                        st.plotly_chart(fig_alpha, use_container_width=True)
-                else:
-                    st.error("Unable to select stocks. Please check your internet connection and try again.")
 
-# --- TAB 6: INDIVIDUAL STOCK ANALYSIS ---
+                    if stock_info:
+                        st.dataframe(pd.DataFrame(stock_info), use_container_width=True, hide_index=True)
+
+                        alpha_vals = [float(i['Predicted Alpha']) for i in stock_info]
+                        stock_names = [i['Stock'] for i in stock_info]
+                        colors = ['#22c55e' if v > 0 else '#ef4444' for v in alpha_vals]
+
+                        fig_a = go.Figure()
+                        fig_a.add_trace(go.Bar(x=stock_names, y=alpha_vals, marker_color=colors,
+                                                text=[f"{v:.4f}" for v in alpha_vals], textposition='outside'))
+                        fig_a.update_layout(title="Predicted Alpha by Stock", xaxis_title="Stock",
+                                            yaxis_title="Predicted Alpha", template=PLOTLY_THEME,
+                                            height=350, margin=dict(l=0,r=0,t=30,b=0),
+                                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                        st.plotly_chart(fig_a, use_container_width=True)
+
+                        csv_buffer = io.StringIO()
+                        pd.DataFrame(stock_info).to_csv(csv_buffer, index=False)
+                        st.download_button(" Download Selection Data", data=csv_buffer.getvalue(),
+                                           file_name="alpha_stock_selection.csv", mime="text/csv")
+                else:
+                    st.error("Unable to select stocks. Check your internet connection.")
+
+# ==========================================
+# TAB 6: STOCK DEEP DIVE
+# ==========================================
 with tabs[5]:
     st.subheader("Individual Stock Alpha & Beta Analysis")
-    
-    if not st.session_state.engine.is_trained:
-        st.info("Please train the ensemble in the 'Ensemble Synthesis' tab first.")
+    if not st.session_state.engine_trained or not engine.is_trained:
+        st.info("Train the ensemble in the **Ensemble** tab first.")
     else:
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            selected_stock = st.selectbox(
-                "Select Indian Stock for Analysis",
-                st.session_state.engine.indian_stocks,
-                format_func=lambda x: x.replace('.NS', '')
-            )
-        
-        with col2:
-            analyze_button = st.button("Analyze Stock", type="primary")
-        
-        if analyze_button:
+        sel_col1, sel_col2 = st.columns([3, 1])
+        with sel_col1:
+            selected_stock = st.selectbox("Select Indian Stock", engine.indian_stocks,
+                                          format_func=lambda x: x.replace('.NS', ''), label_visibility="collapsed")
+        with sel_col2:
+            analyze_btn = st.button(" Analyze", type="primary", use_container_width=True)
+
+        if analyze_btn:
             with st.spinner(f"Analyzing {selected_stock.replace('.NS', '')}..."):
-                analysis = st.session_state.engine.analyze_individual_stock(selected_stock)
-                
+                analysis = engine.analyze_individual_stock(selected_stock)
                 if analysis:
-                    # Key metrics
-                    st.write("### Key Metrics")
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Current Price", f"₹{analysis['current_price']:.2f}")
-                    m2.metric("Predicted Alpha", f"{analysis['predicted_alpha']:.4f}")
-                    m3.metric("Market Beta", f"{analysis['beta']:.3f}")
-                    m4.metric("Volatility", f"{analysis['volatility']:.4f}")
-                    
-                    # Technical indicators
-                    st.write("### Technical Indicators")
-                    tech1, tech2 = st.columns(2)
-                    tech1.metric("RSI", f"{analysis['rsi']:.1f}")
-                    tech2.metric("Price vs SMA(50)", f"{analysis['data']['Price_to_SMA'].iloc[-1]:.3f}")
-                    
-                    # Price chart
-                    st.write("### Price Movement (1 Year)")
-                    fig_price = go.Figure()
-                    fig_price.add_trace(go.Scatter(
-                        x=analysis['data'].index,
-                        y=analysis['data']['Close'],
-                        name='Close Price',
-                        line=dict(color='#1e293b')
-                    ))
-                    fig_price.add_trace(go.Scatter(
-                        x=analysis['data'].index,
-                        y=analysis['data']['SMA_50'],
-                        name='50-day SMA',
-                        line=dict(color='#cbd5e1', dash='dot')
-                    ))
-                    fig_price.update_layout(
-                        template="plotly_white",
-                        xaxis_title="Date",
-                        yaxis_title="Price (₹)"
-                    )
-                    st.plotly_chart(fig_price, use_container_width=True)
-                    
-                    # Alpha vs Beta comparison
-                    st.write("### Alpha vs Beta Performance")
-                    
-                    # Calculate cumulative returns
-                    stock_returns = analysis['data']['Returns'].dropna()
-                    market_returns = stock_returns * analysis['beta']  # Beta-adjusted market returns
-                    alpha_returns = stock_returns - market_returns
-                    
-                    cum_alpha = np.cumsum(alpha_returns)
-                    cum_beta = np.cumsum(market_returns)
-                    
-                    fig_comparison = go.Figure()
-                    fig_comparison.add_trace(go.Scatter(
-                        y=cum_alpha,
-                        name="Cumulative Alpha",
-                        line=dict(color='#1e293b', width=2)
-                    ))
-                    fig_comparison.add_trace(go.Scatter(
-                        y=cum_beta,
-                        name="Market Beta Component",
-                        line=dict(color='#cbd5e1', dash='dot')
-                    ))
-                    fig_comparison.update_layout(
-                        template="plotly_white",
-                        xaxis_title="Trading Days",
-                        yaxis_title="Cumulative Return",
-                        title="Alpha vs Beta Decomposition"
-                    )
-                    st.plotly_chart(fig_comparison, use_container_width=True)
-                    
-                    # Investment recommendation
-                    alpha_score = analysis['predicted_alpha']
-                    beta_score = analysis['beta']
-                    
-                    if alpha_score > 0.001 and beta_score < 1.2:
-                        recommendation = "🟢 STRONG BUY - High Alpha, Reasonable Beta"
-                        color = "green"
-                    elif alpha_score > 0 and beta_score < 1.5:
-                        recommendation = "🟡 BUY - Positive Alpha Signal"
-                        color = "orange"
-                    elif alpha_score < -0.001:
-                        recommendation = "🔴 SELL - Negative Alpha"
-                        color = "red"
+                    st.markdown("### Key Metrics")
+                    mm1, mm2, mm3, mm4, mm5 = st.columns(5)
+                    mm1.metric("Current Price", f"₹{analysis['current_price']:.2f}")
+                    mm2.metric("Predicted Alpha", f"{analysis['predicted_alpha']:.4f}")
+                    mm3.metric("Market Beta", f"{analysis['beta']:.3f}")
+                    mm4.metric("Volatility", f"{analysis['volatility']:.4f}")
+                    mm5.metric("RSI", f"{analysis['rsi']:.1f}")
+
+                    st.markdown("### Price Chart (1 Year)")
+                    d = analysis['data']
+                    fig_p = go.Figure()
+                    fig_p.add_trace(go.Candlestick(x=d.index, open=d['Open'], high=d['High'],
+                                                    low=d['Low'], close=d['Close'], name='OHLC'))
+                    fig_p.add_trace(go.Scatter(x=d.index, y=d['SMA_50'], name='50-day SMA',
+                                                line=dict(color='#3b82f6', dash='dot', width=1.5)))
+                    fig_p.update_layout(template=PLOTLY_THEME, xaxis_title="Date", yaxis_title="Price (₹)",
+                                        xaxis_rangeslider_visible=False, height=450, margin=dict(l=0,r=0,t=0,b=0),
+                                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_p, use_container_width=True)
+
+                    st.markdown("### Technical Indicators")
+                    ti1, ti2, ti3 = st.columns(3)
+                    ti1.metric("RSI (14)", f"{analysis['rsi']:.1f}",
+                               delta="Overbought" if analysis['rsi'] > 70 else "Oversold" if analysis['rsi'] < 30 else "Neutral")
+                    ti2.metric("Price / SMA(50)", f"{analysis['price_to_sma_50']:.3f}",
+                               delta="Above SMA" if analysis['price_to_sma_50'] > 1 else "Below SMA")
+                    ti3.metric("SMA Crossover", f"{analysis['sma_crossover']:.3f}",
+                               delta="Bullish" if analysis['sma_crossover'] > 1 else "Bearish")
+
+                    st.markdown("### Alpha vs Beta Decomposition")
+                    sr = d['Returns'].dropna()
+                    mr = sr * analysis['beta']
+                    ar = sr - mr
+                    cum_a = np.cumsum(ar)
+                    cum_b = np.cumsum(mr)
+
+                    fig_c = go.Figure()
+                    fig_c.add_trace(go.Scatter(y=cum_a, name="Cumulative Alpha", line=dict(color='#3b82f6', width=2)))
+                    fig_c.add_trace(go.Scatter(y=cum_b, name="Market Beta Component", line=dict(color='#cbd5e1', dash='dot')))
+                    fig_c.update_layout(template=PLOTLY_THEME, xaxis_title="Trading Days",
+                                        yaxis_title="Cumulative Return", height=350, margin=dict(l=0,r=0,t=0,b=0),
+                                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_c, use_container_width=True)
+
+                    alpha_s = analysis['predicted_alpha']
+                    beta_s = analysis['beta']
+                    if alpha_s > 0.001 and beta_s < 1.2:
+                        rec, rec_color = "STRONG BUY — High Alpha, Reasonable Beta", "#22c55e"
+                    elif alpha_s > 0 and beta_s < 1.5:
+                        rec, rec_color = "BUY — Positive Alpha Signal", "#f59e0b"
+                    elif alpha_s < -0.001:
+                        rec, rec_color = "SELL — Negative Alpha", "#ef4444"
                     else:
-                        recommendation = "⚪ HOLD - Neutral Signal"
-                        color = "gray"
-                    
+                        rec, rec_color = "HOLD — Neutral Signal", "#64748b"
+
                     st.markdown(f"""
-                    <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; border-left: 4px solid {color};">
-                    <h4>Investment Recommendation</h4>
-                    <p><strong>{recommendation}</strong></p>
-                    <p>Predicted Alpha: {alpha_score:.4f} | Market Beta: {beta_score:.3f}</p>
+                    <div class="recommendation-card" style="border-left-color: {rec_color};">
+                    <h4 style="margin:0 0 0.5rem 0;">Investment Recommendation</h4>
+                    <p style="font-size:1.2rem; font-weight:700; color:{rec_color}; margin:0 0 0.25rem 0;">{rec}</p>
+                    <p style="color:{TEXT_MUTED}; margin:0;">Predicted Alpha: {alpha_s:.4f} | Market Beta: {beta_s:.3f}</p>
                     </div>
                     """, unsafe_allow_html=True)
-                    
                 else:
-                    st.error("Unable to analyze the selected stock. Please check your internet connection and try again.")
+                    st.error("Unable to analyze the selected stock.")
 
-st.divider()
-st.caption("Quantitative System Architecture | Developed for Institutional Equity Research")
+# ==========================================
+# TAB 7: PORTFOLIO
+# ==========================================
+with tabs[6]:
+    st.subheader("Portfolio Optimization")
+    if not st.session_state.engine_trained or not engine.is_trained:
+        st.info("Train the ensemble first.")
+    else:
+        if st.button(" Build Portfolio", type="primary"):
+            with st.spinner("Constructing optimized portfolio..."):
+                selected, _ = engine.select_alpha_stocks(top_n=5)
+                results = []
+                for s in selected:
+                    r = engine.analyze_individual_stock(s)
+                    if r:
+                        results.append(r)
+
+                if results:
+                    names = [r['ticker'].replace('.NS', '') for r in results]
+                    alphas = [r['predicted_alpha'] for r in results]
+                    vols = [r['volatility'] for r in results]
+                    betas = [r['beta'] for r in results]
+
+                    inv_vol = [1 / max(v, 0.001) for v in vols]
+                    weights = np.array(inv_vol) / sum(inv_vol)
+
+                    port_return = sum(w * a for w, a in zip(weights, alphas))
+                    port_vol = np.sqrt(sum((w * v) ** 2 for w, v in zip(weights, vols)))
+                    port_beta = sum(w * b for w, b in zip(weights, betas))
+
+                    st.markdown("### Optimized Portfolio (Inverse-Volatility Weighted)")
+                    port_df = pd.DataFrame({
+                        'Stock': names,
+                        'Alpha': [f"{a:.4f}" for a in alphas],
+                        'Volatility': [f"{v:.4f}" for v in vols],
+                        'Beta': [f"{b:.3f}" for b in betas],
+                        'Weight': [f"{w*100:.1f}%" for w in weights]
+                    })
+                    st.dataframe(port_df, use_container_width=True, hide_index=True)
+
+                    pm1, pm2, pm3 = st.columns(3)
+                    pm1.metric("Expected Alpha (Weighted)", f"{port_return:.4f}")
+                    pm2.metric("Portfolio Volatility", f"{port_vol:.4f}")
+                    pm3.metric("Portfolio Beta", f"{port_beta:.3f}")
+
+                    fig_pie = go.Figure(data=[go.Pie(labels=names, values=weights, hole=0.4,
+                                                      marker=dict(colors=px.colors.qualitative.Bold))])
+                    fig_pie.update_layout(template=PLOTLY_THEME, height=350, margin=dict(l=0,r=0,t=0,b=0),
+                                          paper_bgcolor='rgba(0,0,0,0)', font=dict(color=TEXT))
+                    st.plotly_chart(fig_pie, use_container_width=True)
+
+                    csv_buf = io.StringIO()
+                    port_df.to_csv(csv_buf, index=False)
+                    st.download_button(" Download Portfolio", data=csv_buf.getvalue(),
+                                       file_name="optimized_portfolio.csv", mime="text/csv")
+                else:
+                    st.error("Could not fetch stock data for portfolio construction.")
